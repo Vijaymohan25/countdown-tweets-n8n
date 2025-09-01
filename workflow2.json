@@ -1,0 +1,286 @@
+{
+  "name": "My workflow 2",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "hour": 9
+            }
+          ]
+        }
+      },
+      "id": "6b73dbc2-2d3b-4280-b6e9-2a3cad0c1c1f",
+      "name": "Cron",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "icsUrl",
+              "value": "https://calendar.google.com/calendar/ical/2a9846fe81c8ca2d74742f620d93093148d62e15b8592b65c0cb0a434fbfbf1c%40group.calendar.google.com/private-525c761bd93b163d3fb8a1a19c5f2f0c/basic.ics"
+            },
+            {
+              "name": "lookAheadDays",
+              "value": "7"
+            },
+            {
+              "name": "tweetPrefix",
+              "value": "#Webinar"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "be7d1e7d-0ecc-4223-9423-daa4ea46a86e",
+      "name": "Set - Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$json[\"icsUrl\"]}}",
+        "responseFormat": "string",
+        "options": {}
+      },
+      "id": "70fb4131-4c49-4289-85b9-f4ef92147880",
+      "name": "Fetch ICS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const icsData = $node[\"Fetch ICS\"].json[\"data\"];\nconst lines = icsData.split(/\\r?\\n/);\nconst items = [];\nlet event = {};\n\nfor (let line of lines) {\n  line = line.trim();\n  if (line === \"BEGIN:VEVENT\") event = {};\n  else if (line.startsWith(\"UID:\")) event.uid = line.replace(\"UID:\", \"\");\n  else if (line.startsWith(\"SUMMARY:\")) event.summary = line.replace(\"SUMMARY:\", \"\");\n  else if (line.startsWith(\"DTSTART;TZID=\")) {\n    const dt = line.split(\":\")[1];\n    const year = parseInt(dt.slice(0,4));\n    const month = parseInt(dt.slice(4,6)) - 1;\n    const day = parseInt(dt.slice(6,8));\n    const hour = parseInt(dt.slice(9,11));\n    const minute = parseInt(dt.slice(11,13));\n    event.start = new Date(year, month, day, hour, minute);\n  } else if (line === \"END:VEVENT\") {\n    const today = new Date();\n    today.setHours(0,0,0,0);\n    const diffDays = Math.ceil((event.start - today)/(1000*60*60*24));\n    const lookAhead = parseInt($node[\"Set - Config\"].json[\"lookAheadDays\"] || \"7\");\n    if (diffDays >= 0 && diffDays <= lookAhead) {\n      items.push({\n        json: {\n          eventId: event.uid,\n          eventName: event.summary,\n          eventDate: event.start.toISOString().split(\"T\")[0],\n          countdownDay: diffDays,\n          tweetText: `T-${diffDays} days: ${event.summary}!`\n        }\n      });\n    }\n  }\n}\n\nreturn items;\n"
+      },
+      "id": "7d8c062d-4495-4918-a206-089c4b654346",
+      "name": "Parse ICS",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        608,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "text": "={{$json[\"tweetText\"]}} ({{ $now }})\n",
+        "additionalFields": {}
+      },
+      "id": "5636c263-bd60-4cc5-b1da-dd95ed50e67c",
+      "name": "Post Tweet",
+      "type": "n8n-nodes-base.twitter",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        0
+      ],
+      "credentials": {
+        "twitterOAuth2Api": {
+          "id": "m7OeNuN87HBY3EQp",
+          "name": "X account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1bwk2DjjJdD6z-kQH19OmLCCEoD8XT542eYj-IS5U6UA",
+          "mode": "list",
+          "cachedResultName": "Webinar Events",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1bwk2DjjJdD6z-kQH19OmLCCEoD8XT542eYj-IS5U6UA/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Webinar Events",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1bwk2DjjJdD6z-kQH19OmLCCEoD8XT542eYj-IS5U6UA/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Event ID": "{{$json[\"eventId\"]}}",
+            "Event Title": "{{$json[\"eventName\"]}}",
+            "Start Date": "{{$json[\"eventDate\"]}}",
+            "T-5": "{{$json[\"t5\"]}}",
+            "T-1": "{{$json[\"t1\"]}}",
+            "Today": "{{$json[\"t0\"]}}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Event ID",
+              "displayName": "Event ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Event Title",
+              "displayName": "Event Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Start Date",
+              "displayName": "Start Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "T-5",
+              "displayName": "T-5",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "T-1",
+              "displayName": "T-1",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Today",
+              "displayName": "Today",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        816,
+        0
+      ],
+      "id": "f49533bd-59dd-475a-85c1-88c9acf0b910",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "tOZsSzRKMTBCywEO",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "Set - Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Config": {
+      "main": [
+        [
+          {
+            "node": "Fetch ICS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch ICS": {
+      "main": [
+        [
+          {
+            "node": "Parse ICS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse ICS": {
+      "main": [
+        [
+          {
+            "node": "Post Tweet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Tweet": {
+      "main": [
+        []
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Kolkata",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "9d977009-5701-466e-a244-52ec8482c5ad",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "81681aa99c992a99bc0e8dbb047294a51b3f4e396302c36b6fbf5625d4df9cf7"
+  },
+  "id": "cZhsRbK8P9QjhBY6",
+  "tags": []
+}
